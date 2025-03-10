@@ -1,0 +1,37 @@
+mupd - CurseForge Addon Update Script
+
+This script updates addons for World of Warcraft retail by downloading the latest versions from CurseForge.
+It reads a list of CurseForge addon URLs from list.txt in the specified addon directory.
+
+Dependencies:
+
+  bash
+  curl
+  htmlq
+  jq
+  7z
+
+Usage:
+
+./mupd <addon_directory>
+
+  Replace <addon_directory> with the path to your addon directory, which should contain a list.txt file with CurseForge addon URLs.
+  Optional -v flag for verbose output.
+
+Example list.txt:
+
+https://www.curseforge.com/wow/addons/baganator
+https://www.curseforge.com/wow/addons/leatrix-maps
+https://www.curseforge.com/wow/addons/leatrix-plus
+https://www.curseforge.com/wow/addons/weakauras-2
+
+  Make sure each line in your list.txt contains a valid CurseForge addon URL.
+  Replace these example URLs with the actual URLs of the addons you want to update.
+
+Notes:
+
+  Initially a rough script, improved for error handling and output using gemini-2.0-flash-thinking-exp.
+  It stupidly deletes *AddonName* before extracting a new version. I haven't had problems.
+  Works on retail only because it always takes the latest "main file" from CurseForge.
+
+License: GPLv2

@@ -1,0 +1,150 @@
+#!/usr/bin/bash
+
+set -euo pipefail
+
+VERBOSE=0
+
+function error () {
+  echo "Error: $1" >&2
+  exit 1
+}
+
+function verbose () {
+  if [ $VERBOSE -eq 1 ]; then
+    echo "$1"
+  fi
+}
+
+dir=""
+
+while getopts "v" opt; do
+  case "$opt" in
+    v)
+      VERBOSE=1
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      echo "Usage: $0 [-v] <addon_directory>" >&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+if [ -z "$1" ]; then
+  error "Addon directory argument is missing. Please provide the addon directory as the first argument (after any options like -v)."
+fi
+dir="$1"
+
+list="$dir/list.txt"
+
+if [ ! -f "$list" ]; then
+  error "List.txt file does not exist in addon dir '$dir'. Ensure list.txt is in the addon directory."
+fi
+
+function process () {
+  if [ -z "$1" ]; then
+    error "Bad url in list.txt: Empty URL found."
+  fi
+  local url="$1"
+  local name=
+  local project_data=
+  local project_id=
+  local project_file_id=
+  local project_file_name=
+  local project_file_display_name=
+  local tries=0
+  while [ -z "$project_data" ]; do
+    if [ $tries -gt 4 ]; then
+      error "Failed to get project data for '$url' after multiple retries, exiting. There might be an issue with the URL or CurseForge might be temporarily unavailable."
+    fi
+    local data=
+    verbose "Fetching project data from $url (try $((tries+1)))..."
+    data=$(curl -s "$url" \
+      -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+      -H 'accept-language: en-US,en;q=0.9,hr;q=0.8' \
+      -H 'cache-control: no-cache' \
+      -H 'pragma: no-cache' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' \
+      | htmlq -t 'script#__NEXT_DATA__' | jq -r '.props.pageProps.project')
+    if [ -z "$data" ]; then
+      ((++tries))
+      sleep 1
+      continue
+    fi
+    project_data="$data"
+    if [ $VERBOSE -eq 1 ]; then
+      verbose "Raw project data received: $project_data"
+    fi
+  done
+
+  project_id=$(echo "$project_data" | jq -r '.id')
+  project_file_id=$(echo "$project_data" | jq -r '.mainFile.id')
+  project_file_name=$(echo "$project_data" | jq -r '.mainFile.fileName')
+  project_file_display_name=$(echo "$project_data" | jq -r '.mainFile.displayName')
+
+  name=$(echo "$project_file_name" | sed -e 's|.zip||' -e "s|-$project_file_display_name||")
+
+  if [ -z "$project_id" ]; then
+    error "Unable to parse project_id from fetched data."
+  fi
+  if [ -z "$project_file_id" ]; then
+    error "Unable to parse project_file_id from fetched data."
+  fi
+  if [ -z "$project_file_name" ]; then
+    error "Unable to parse project_file_name from fetched data."
+  fi
+  if [ -z "$project_file_display_name" ]; then
+    error "Unable to parse project_file_display_name from fetched data."
+  fi
+  if [ -z "$name" ]; then
+    error "Unable to parse addon name from project file name."
+  fi
+
+  if [ $VERBOSE -eq 1 ]; then
+    verbose "Project Details:"
+    verbose "  Project ID:                   $project_id"
+    verbose "  Project File ID:              $project_file_id"
+    verbose "  Project File Name:            $project_file_name"
+    verbose "  Project File Display Name:    $project_file_display_name"
+    verbose "  Addon Name:                   $name"
+  fi
+
+  local download_url="https://www.curseforge.com/api/v1/mods/$project_id/files/$project_file_id/download"
+  local download_dest="/tmp/$project_file_name"
+  verbose "Downloading from: $download_url to $download_dest"
+  curl -s -L -o "$download_dest" "$download_url" \
+    -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+  if [ "$?" -ne 0 ]; then
+    error "Curl download failed for '$download_url'. Please check your internet connection or the URL. Curl exit code: $?."
+  fi
+
+  local addon_dir="$dir/$name"
+  if [[ "$addon_dir" == "$dir" ]]; then
+    error "Addon_dir is the same as base dir, preventing deletion. This is a safety check, please report if you encounter this."
+  fi
+  verbose "Removing existing addon files matching '$dir/*${name}*'"
+  rm -rf "$dir"/*"$name"*
+
+  verbose "Extracting '$download_dest' to '$dir'"
+  7z x -aoa -o"$dir" "$download_dest" > /dev/null
+  if [ "$?" -ne 0 ]; then
+    error "7z extraction failed for '$download_dest' to '$dir'. Ensure 7z is installed and the archive is not corrupted. 7z exit code: $?."
+  fi
+
+  rm -f "$download_dest"
+  verbose "Removed temporary download file: $download_dest"
+  echo "Successfully installed addon: $name in '$dir'"
+}
+
+
+if [ $VERBOSE -eq 1 ]; then
+  verbose "Verbose mode enabled."
+fi
+
+
+while read -r addon; do
+  process "$addon"
+done < "$list"
+
+echo "Finished processing addon list from '$list'."
