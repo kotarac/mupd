@@ -69,7 +69,7 @@ function process () {
       | htmlq -t 'script#__NEXT_DATA__' | jq -r '.props.pageProps.project')
     if [ -z "$data" ]; then
       ((++tries))
-      sleep 1
+      sleep 2
       continue
     fi
     project_data="$data"
@@ -135,6 +135,7 @@ function process () {
   rm -f "$download_dest"
   verbose "Removed temporary download file: $download_dest"
   echo "Successfully installed addon: $name in '$dir'"
+  sleep 1
 }
 
 
