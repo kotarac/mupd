@@ -65,7 +65,7 @@ function process () {
       -H 'accept-language: en-US,en;q=0.9,hr;q=0.8' \
       -H 'cache-control: no-cache' \
       -H 'pragma: no-cache' \
-      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' \
+      -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36' \
       | htmlq -t 'script#__NEXT_DATA__' | jq -r '.props.pageProps.project')
     if [ -z "$data" ]; then
       ((++tries))
