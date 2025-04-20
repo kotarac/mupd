@@ -61,10 +61,27 @@ function process () {
     local data=
     verbose "Fetching project data from $url (try $((tries+1)))..."
     data=$(curl -s "$url" \
+      --http3 \
       -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
       -H 'accept-language: en-US,en;q=0.9,hr;q=0.8' \
       -H 'cache-control: no-cache' \
       -H 'pragma: no-cache' \
+      -H 'priority: u=0, i' \
+      -H 'referer: https://www.google.com/' \
+      -H 'sec-ch-ua: "Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"' \
+      -H 'sec-ch-ua-arch: "x86"' \
+      -H 'sec-ch-ua-bitness: "64"' \
+      -H 'sec-ch-ua-full-version: "135.0.7049.84"' \
+      -H 'sec-ch-ua-full-version-list: "Google Chrome";v="135.0.7049.84", "Not-A.Brand";v="8.0.0.0", "Chromium";v="135.0.7049.84"' \
+      -H 'sec-ch-ua-mobile: ?0' \
+      -H 'sec-ch-ua-model: ""' \
+      -H 'sec-ch-ua-platform: "Linux"' \
+      -H 'sec-ch-ua-platform-version: "6.14.2"' \
+      -H 'sec-fetch-dest: document' \
+      -H 'sec-fetch-mode: navigate' \
+      -H 'sec-fetch-site: same-origin' \
+      -H 'sec-fetch-user: ?1' \
+      -H 'upgrade-insecure-requests: 1' \
       -H 'user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36' \
       | htmlq -t 'script#__NEXT_DATA__' | jq -r '.props.pageProps.project')
     if [ -z "$data" ]; then
@@ -135,7 +152,7 @@ function process () {
   rm -f "$download_dest"
   verbose "Removed temporary download file: $download_dest"
   echo "Successfully installed addon: $name in '$dir'"
-  sleep 1
+  sleep 0.25
 }
 
 
