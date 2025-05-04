@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+ID_CLASSIC=67408
+ID_RETAIL=517
+
 VERBOSE=0
 
 function error () {
@@ -15,21 +18,45 @@ function verbose () {
   fi
 }
 
-dir=""
+function usage {
+  echo "Usage: $0 [-hv] <addon_directory>"
+  echo "Update CurseForge addons from a list.txt file within a WoW addon directory structure."
+  echo
+  echo "Arguments:"
+  echo "  <addon_directory>  The path to the specific addon subdirectory (e.g., /path/to/WoW/_classic_era_/Addons/MyAddonDir)"
+  echo
+  echo "Options:"
+  echo "  -v                 Enable verbose output."
+  echo "  -h                 Display this help message and exit."
+  echo
+  echo "The script expects the <addon_directory> path to contain:"
+  echo "1. A 'list.txt' file with one CurseForge addon URL per line."
+  echo "2. Be located within a directory structure like .../WoW/_retail_/Addons or .../WoW/_classic_era_/Addons to detect the WoW version."
+}
 
-while getopts "v" opt; do
+while getopts "vh" opt; do
   case "$opt" in
     v)
       VERBOSE=1
       ;;
+    h)
+      usage
+      exit 0
+      ;;
     \?)
-      echo "Invalid option: -$OPTARG" >&2
-      echo "Usage: $0 [-v] <addon_directory>" >&2
+      echo "Error: Invalid option: -$OPTARG" >&2
+      usage >&2
       exit 1
       ;;
   esac
 done
 shift $((OPTIND-1))
+
+if [ -z "${1:-}" ]; then
+  echo "Error: Addon directory argument is missing." >&2
+  usage >&2
+  exit 1
+fi
 
 if [ -z "$1" ]; then
   error "Addon directory argument is missing. Please provide the addon directory as the first argument (after any options like -v)."
@@ -37,10 +64,25 @@ fi
 dir="$1"
 
 list="$dir/list.txt"
-
 if [ ! -f "$list" ]; then
   error "List.txt file does not exist in addon dir '$dir'. Ensure list.txt is in the addon directory."
 fi
+
+version_name=$(basename "$(dirname "$(dirname "$dir")")")
+version=
+case "$version_name" in
+  _classic_era_)
+    version=$ID_CLASSIC
+    echo "Detected WoW version: Classic Era (ID: $ID_CLASSIC)"
+    ;;
+  _retail_)
+    version=$ID_RETAIL
+    echo "Detected WoW version: Retail (ID: $ID_RETAIL)"
+    ;;
+  *)
+    error "WoW version not recognized from directory component '$version_name'. Expected '_classic_era_' or '_retail_'. Ensure the addon directory path is correct."
+    ;;
+esac
 
 function process () {
   if [ -z "$1" ]; then
@@ -96,15 +138,21 @@ function process () {
   done
 
   project_id=$(echo "$project_data" | jq -r '.id')
-  project_file_id=$(echo "$project_data" | jq -r '.mainFile.id')
-  project_file_name=$(echo "$project_data" | jq -r '.mainFile.fileName')
-  project_file_display_name=$(echo "$project_data" | jq -r '.mainFile.displayName')
-
-  name=$(echo "$project_file_name" | sed -e 's|.zip||' -e "s|-$project_file_display_name||")
-
   if [ -z "$project_id" ]; then
     error "Unable to parse project_id from fetched data."
   fi
+
+  project_file=$(echo "$project_data" | jq -r ".latestFiles.[] | select(.gameVersion.id == $version) | .files.[0]")
+  if [ -z "$project_file" ]; then
+    error "Unable to find a file for this version of WoW."
+  fi
+
+  project_file_id=$(echo "$project_file" | jq -r '.id')
+  project_file_name=$(echo "$project_file" | jq -r '.fileName')
+  project_file_display_name=$(echo "$project_file" | jq -r '.displayName')
+
+  name=$(echo "$project_file_name" | sed -e 's|.zip||' -e "s|-$project_file_display_name||")
+
   if [ -z "$project_file_id" ]; then
     error "Unable to parse project_file_id from fetched data."
   fi
@@ -130,8 +178,7 @@ function process () {
   local download_url="https://www.curseforge.com/api/v1/mods/$project_id/files/$project_file_id/download"
   local download_dest="/tmp/$project_file_name"
   verbose "Downloading from: $download_url to $download_dest"
-  curl -s -L -o "$download_dest" "$download_url" \
-    -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+  curl -s -L -o "$download_dest" "$download_url" -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
   if [ "$?" -ne 0 ]; then
     error "Curl download failed for '$download_url'. Please check your internet connection or the URL. Curl exit code: $?."
   fi
@@ -154,12 +201,6 @@ function process () {
   echo "Successfully installed addon: $name in '$dir'"
   sleep 0.25
 }
-
-
-if [ $VERBOSE -eq 1 ]; then
-  verbose "Verbose mode enabled."
-fi
-
 
 while read -r addon; do
   process "$addon"
